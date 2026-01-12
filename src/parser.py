@@ -146,17 +146,26 @@ class FacebookParser:
             # Extract likes
             like_match = re.search(r'([\d,]+)\s*(?:likes?|thích)', text, re.IGNORECASE)
             if like_match:
-                engagement['likes'] = int(like_match.group(1).replace(',', ''))
+                try:
+                    engagement['likes'] = int(like_match.group(1).replace(',', ''))
+                except ValueError:
+                    pass
             
             # Extract comments
             comment_match = re.search(r'([\d,]+)\s*(?:comments?|bình luận)', text, re.IGNORECASE)
             if comment_match:
-                engagement['comments'] = int(comment_match.group(1).replace(',', ''))
+                try:
+                    engagement['comments'] = int(comment_match.group(1).replace(',', ''))
+                except ValueError:
+                    pass
             
             # Extract shares
             share_match = re.search(r'([\d,]+)\s*(?:shares?|chia sẻ)', text, re.IGNORECASE)
             if share_match:
-                engagement['shares'] = int(share_match.group(1).replace(',', ''))
+                try:
+                    engagement['shares'] = int(share_match.group(1).replace(',', ''))
+                except ValueError:
+                    pass
                 
         except Exception as e:
             logger.error(f"Error extracting engagement: {e}")

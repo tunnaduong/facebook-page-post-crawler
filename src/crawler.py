@@ -103,9 +103,11 @@ class FacebookCrawler:
         self.browser = playwright.chromium.launch(**launch_options)
         
         # Create context with realistic settings
+        # User agent can be configured via environment variable
+        user_agent = os.getenv('USER_AGENT', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         context = self.browser.new_context(
             viewport={'width': 1920, 'height': 1080},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            user_agent=user_agent
         )
         
         self.page = context.new_page()

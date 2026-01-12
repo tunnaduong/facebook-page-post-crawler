@@ -73,12 +73,11 @@ def crawl_all_active_pages_task():
     Celery task to crawl all active pages from database
     
     Returns:
-        List of crawl results for each page
+        Dictionary with summary of tasks created
     """
     logger.info("Starting crawl task for all active pages")
     
     db = Database()
-    results = []
     
     try:
         db.connect()
@@ -86,24 +85,22 @@ def crawl_all_active_pages_task():
         
         logger.info(f"Found {len(active_pages)} active pages to crawl")
         
+        # Queue individual crawl tasks (not recursive, just scheduling)
+        task_count = 0
         for page in active_pages:
             page_url = page['page_url']
             page_name = page['page_name']
             
-            logger.info(f"Crawling page: {page_name}")
+            logger.info(f"Queueing crawl for page: {page_name}")
             
-            # Run crawl for this page
-            result = crawl_page_task.apply_async(
-                args=[page_url, page_name],
-                kwargs={'scrolls': 5}
-            )
-            
-            results.append({
-                'page_name': page_name,
-                'task_id': result.id
-            })
+            # Queue crawl task (will be executed by worker pool)
+            crawl_page_task.delay(page_url, page_name, 5)
+            task_count += 1
         
-        return results
+        return {
+            'success': True,
+            'pages_queued': task_count
+        }
         
     except Exception as e:
         logger.error(f"Error in crawl all pages task: {e}")

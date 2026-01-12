@@ -16,6 +16,20 @@ st.set_page_config(
     layout="wide"
 )
 
+
+# Helper functions
+def parse_json_field(json_field):
+    """Parse JSON field from database (handles both string and dict)"""
+    if not json_field:
+        return None
+    if isinstance(json_field, str):
+        try:
+            return json.loads(json_field)
+        except:
+            return None
+    return json_field
+
+
 # Initialize database connection
 @st.cache_resource
 def get_database():
@@ -27,16 +41,10 @@ def get_database():
 
 def format_engagement(engagement_json):
     """Format engagement JSON for display"""
-    if not engagement_json:
+    engagement = parse_json_field(engagement_json)
+    if not engagement:
         return "N/A"
-    try:
-        if isinstance(engagement_json, str):
-            engagement = json.loads(engagement_json)
-        else:
-            engagement = engagement_json
-        return f"👍 {engagement.get('likes', 0)} | 💬 {engagement.get('comments', 0)} | 🔄 {engagement.get('shares', 0)}"
-    except:
-        return "N/A"
+    return f"👍 {engagement.get('likes', 0)} | 💬 {engagement.get('comments', 0)} | 🔄 {engagement.get('shares', 0)}"
 
 
 def main():
@@ -111,9 +119,9 @@ def main():
             # Convert to DataFrame for better display
             posts_data = []
             for post in posts:
-                # Parse JSON fields
-                media_urls = json.loads(post['media_urls']) if isinstance(post['media_urls'], str) else post['media_urls']
-                engagement = json.loads(post['engagement']) if isinstance(post['engagement'], str) else post['engagement']
+                # Parse JSON fields using helper function
+                media_urls = parse_json_field(post['media_urls'])
+                engagement = parse_json_field(post['engagement'])
                 
                 posts_data.append({
                     'Page': post['page_name'],
@@ -159,14 +167,14 @@ def main():
                     st.write(f"Crawled: {selected_post['crawled_at'].strftime('%Y-%m-%d %H:%M')}")
                 
                 # Media URLs
-                media_urls = json.loads(selected_post['media_urls']) if isinstance(selected_post['media_urls'], str) else selected_post['media_urls']
+                media_urls = parse_json_field(selected_post['media_urls'])
                 if media_urls:
                     st.markdown("**Media URLs:**")
                     for i, url in enumerate(media_urls, 1):
                         st.write(f"{i}. {url}")
                 
                 # Engagement
-                engagement = json.loads(selected_post['engagement']) if isinstance(selected_post['engagement'], str) else selected_post['engagement']
+                engagement = parse_json_field(selected_post['engagement'])
                 if engagement:
                     st.markdown("**Engagement:**")
                     ecol1, ecol2, ecol3 = st.columns(3)

@@ -66,6 +66,13 @@ services:
       - ./logs:/app/logs
     networks:
       - fb_crawler_network
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          memory: 512M
 
   # Celery Beat Scheduler
   celery_beat:
@@ -90,6 +97,13 @@ services:
       - ./logs:/app/logs
     networks:
       - fb_crawler_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          memory: 128M
 
   # Streamlit Dashboard
   dashboard:
@@ -110,6 +124,13 @@ services:
         condition: service_healthy
     networks:
       - fb_crawler_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          memory: 256M
 
 volumes:
   mysql_data:
