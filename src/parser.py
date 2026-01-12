@@ -291,6 +291,11 @@ class FacebookParser:
         self.parse_html(html_content)
         posts = []
         
+        # Check if we're hitting a login wall
+        if self._check_login_required():
+            logger.warning("Facebook is requiring login to view this page. Posts may not be visible.")
+            logger.warning("Try logging in first or use cookies from an authenticated session.")
+        
         # Find all post elements
         # Facebook structure varies, try multiple selectors in order of specificity
         post_selectors = [
@@ -351,3 +356,18 @@ class FacebookParser:
         
         logger.info(f"Successfully parsed {len(posts)} posts")
         return posts
+    
+    def _check_login_required(self) -> bool:
+        """Check if Facebook is requiring login"""
+        if not self.soup:
+            return False
+        
+        # Check for common login-related elements
+        login_indicators = [
+            self.soup.find('form', {'id': 'login_form'}),
+            self.soup.find('input', {'name': 'email'}),
+            self.soup.find('input', {'name': 'pass'}),
+            self.soup.find(string=lambda text: text and 'log in' in text.lower()),
+        ]
+        
+        return any(login_indicators)

@@ -228,6 +228,21 @@ class FacebookCrawler:
             # Parse posts
             posts = self.parser.find_posts(html_content, page_name)
             
+            # If no posts found, provide helpful diagnostics
+            if len(posts) == 0:
+                logger.warning("No posts were found on this page.")
+                logger.warning("Possible reasons:")
+                logger.warning("  1. The page requires login to view posts")
+                logger.warning("  2. The page has no posts")
+                logger.warning("  3. Facebook's HTML structure has changed")
+                logger.warning("  4. You may be blocked or rate-limited")
+                logger.warning("")
+                logger.warning("Suggestions:")
+                logger.warning("  1. Try logging in with valid credentials")
+                logger.warning("  2. Save cookies from a logged-in session")
+                logger.warning("  3. Use --debug-html flag to save HTML for inspection")
+                logger.warning("  4. Check if the page URL is correct and publicly accessible")
+            
             logger.info(f"Successfully crawled {len(posts)} posts from {page_name}")
             return posts
             
@@ -299,9 +314,15 @@ class FacebookCrawler:
             self._random_delay(2, 4)
             
             # Check if we need to login
-            if 'login' in self.page.url.lower():
+            current_url = self.page.url.lower()
+            if 'login' in current_url or 'checkpoint' in current_url:
                 logger.warning("Not logged in. Attempting login...")
-                self.login()
+                login_success = self.login()
+                if not login_success:
+                    logger.error("Login failed. Proceeding without authentication.")
+                    logger.error("Note: Many pages require login to view posts.")
+            else:
+                logger.info("Already logged in or authentication not required")
             
             # Connect to database if saving
             if save_to_db:
