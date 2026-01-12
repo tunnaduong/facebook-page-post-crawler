@@ -66,6 +66,12 @@ class FacebookCrawler:
         """Load cookies from file"""
         cookie_file = self._get_cookie_file(identifier)
         
+        # Fallback to cookies.json if default doesn't exist
+        if identifier == 'default' and not cookie_file.exists():
+            alternate_file = self.cookies_path / 'cookies.json'
+            if alternate_file.exists():
+                cookie_file = alternate_file
+        
         if not cookie_file.exists():
             logger.info(f"No cookie file found at {cookie_file}")
             return False
@@ -74,8 +80,38 @@ class FacebookCrawler:
             with open(cookie_file, 'r') as f:
                 cookies = json.load(f)
             
-            self.page.context.add_cookies(cookies)
-            logger.info(f"Loaded cookies from {cookie_file}")
+            # Adapt cookies from Chrome extension format to Playwright format
+            adapted_cookies = []
+            for cookie in cookies:
+                adapted = {
+                    'name': cookie.get('name'),
+                    'value': cookie.get('value'),
+                    'domain': cookie.get('domain'),
+                    'path': cookie.get('path', '/'),
+                    'httpOnly': cookie.get('httpOnly', False),
+                    'secure': cookie.get('secure', False),
+                }
+                
+                # Handle expirationDate -> expires
+                if 'expirationDate' in cookie:
+                    adapted['expires'] = cookie['expirationDate']
+                elif 'expires' in cookie:
+                    adapted['expires'] = cookie['expires']
+                
+                # sameSite mapping
+                if 'sameSite' in cookie:
+                    ss = cookie['sameSite'].lower()
+                    if ss == 'no_restriction':
+                        adapted['sameSite'] = 'None'
+                    elif ss in ['strict', 'lax']:
+                        adapted['sameSite'] = ss.capitalize()
+                    else:
+                        adapted['sameSite'] = 'Lax' # Default
+                
+                adapted_cookies.append(adapted)
+            
+            self.page.context.add_cookies(adapted_cookies)
+            logger.info(f"Loaded {len(adapted_cookies)} cookies from {cookie_file}")
             return True
         except Exception as e:
             logger.error(f"Error loading cookies: {e}")
@@ -208,8 +244,34 @@ class FacebookCrawler:
         
         try:
             # Navigate to page
-            self.page.goto(page_url, wait_until='networkidle', timeout=60000)
+            logger.info(f"Navigating to {page_url}")
+            self.page.goto(page_url, wait_until='domcontentloaded', timeout=60000)
+            
+            # Wait for some content to load
+            try:
+                self.page.wait_for_load_state('networkidle', timeout=20000)
+            except Exception as e:
+                logger.warning(f"Network idle timeout: {e}. Proceeding anyway...")
+            
             self._random_delay(3, 5)
+            
+            # Check for login redirect
+            if 'login' in self.page.url or 'checkpoint' in self.page.url:
+                logger.warning("Redirected to login/checkpoint page")
+            
+            # Try to wait for key elements to ensure page is loaded
+            try:
+                logger.info("Waiting for feed content...")
+                # Wait for either feed, main role, or common feed container classes
+                self.page.wait_for_selector(
+                    'div[role="feed"], div[role="main"], div[data-pagelet*="Feed"], div.x1yztbdb', 
+                    timeout=15000, 
+                    state='attached'
+                )
+                logger.info("Feed content detected")
+            except Exception as e:
+                logger.warning("Could not identify feed content. Page might be blocked, require login, or structure changed.")
+                logger.warning(f"Wait error: {e}")
             
             # Scroll to load more posts
             self.scroll_page(scrolls)

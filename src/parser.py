@@ -294,6 +294,9 @@ class FacebookParser:
         self.parse_html(html_content)
         posts = []
         
+        if self.soup.title:
+            logger.info(f"Page Title: {self.soup.title.string}")
+            
         # Check if we're hitting a login wall
         if self._check_login_required():
             logger.warning("Facebook is requiring login to view this page. Posts may not be visible.")
@@ -302,9 +305,12 @@ class FacebookParser:
         # Find all post elements
         # Facebook structure varies, try multiple selectors in order of specificity
         post_selectors = [
-            # Modern Facebook selectors (2024+)
+            # Modern Facebook selectors (2024-2025)
             {'role': 'article'},
-            {'data-pagelet': lambda x: x and 'FeedUnit' in x},
+            {'data-pagelet': lambda x: x and ('FeedUnit' in x or 'Story' in x)},
+            {'class': 'x1yztbdb'}, # Common grid/feed item class
+            {'class': 'x1n2onr6'}, # Another common container class
+            
             # Older selectors as fallback
             {'data-testid': 'fbfeed_story'},
             {'class': '_5pcr userContentWrapper'},
@@ -313,11 +319,15 @@ class FacebookParser:
         post_elements = []
         for i, selector in enumerate(post_selectors):
             try:
-                elements = self.soup.find_all('div', selector)
+                if 'class' in selector and isinstance(selector['class'], str):
+                     # precise class match or contains
+                     elements = self.soup.find_all('div', class_=selector['class'])
+                else:
+                    elements = self.soup.find_all('div', selector)
+                    
                 if elements:
                     logger.info(f"Found {len(elements)} elements with selector #{i+1}: {selector}")
                     post_elements.extend(elements)
-                    break
             except Exception as e:
                 logger.debug(f"Selector {selector} failed: {e}")
                 continue
@@ -325,15 +335,17 @@ class FacebookParser:
         # If no elements found with specific selectors, try broader search
         if not post_elements:
             logger.warning("No elements found with specific selectors, trying broader search...")
+            
             # Look for divs with role=article anywhere
             post_elements = self.soup.find_all('div', {'role': 'article'})
+            
             if not post_elements:
                 # Try finding by class patterns
                 for div in self.soup.find_all('div', class_=True):
                     div_classes = div.get('class', [])
                     if isinstance(div_classes, list):
                         # Check if any known class patterns are present
-                        if any(cls in div_classes for cls in ['userContentWrapper', 'x1yztbdb', 'x1n2onr6']):
+                        if any(cls in div_classes for cls in ['userContentWrapper', 'x1yztbdb', 'x1n2onr6', 'feed-story']):
                             post_elements.append(div)
                             continue
                 
