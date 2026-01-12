@@ -40,9 +40,8 @@ ENV/
 .playwright/
 
 # Cookies and sessions
-cookies/
-*.json
-!package.json
+cookies/*.json
+!cookies/.gitkeep
 
 # Logs
 *.log
