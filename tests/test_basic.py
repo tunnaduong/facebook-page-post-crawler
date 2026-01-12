@@ -30,45 +30,32 @@ class TestConfig(unittest.TestCase):
 class TestCrawlerPageInput(unittest.TestCase):
     """Test crawler page URL/name handling"""
     
-    def test_page_url_conversion_with_url(self):
-        """Test that full URLs are used as-is"""
-        page_input = "https://www.facebook.com/microsoft"
-        # Simulate the conversion logic in main()
+    def _convert_page_to_url(self, page_input):
+        """Helper method that simulates the conversion logic in main()"""
         page_url = page_input
         if not page_url.startswith('http'):
             page_url = f'https://www.facebook.com/{page_url}'
-        
-        self.assertEqual(page_url, "https://www.facebook.com/microsoft")
+        return page_url
+    
+    def test_page_url_conversion_with_url(self):
+        """Test that full URLs are used as-is"""
+        result = self._convert_page_to_url("https://www.facebook.com/microsoft")
+        self.assertEqual(result, "https://www.facebook.com/microsoft")
     
     def test_page_url_conversion_with_name(self):
         """Test that page names are converted to URLs"""
-        page_input = "microsoft"
-        # Simulate the conversion logic in main()
-        page_url = page_input
-        if not page_url.startswith('http'):
-            page_url = f'https://www.facebook.com/{page_url}'
-        
-        self.assertEqual(page_url, "https://www.facebook.com/microsoft")
+        result = self._convert_page_to_url("microsoft")
+        self.assertEqual(result, "https://www.facebook.com/microsoft")
     
     def test_page_url_conversion_with_https(self):
         """Test that HTTPS URLs are recognized"""
-        page_input = "https://facebook.com/testpage"
-        # Simulate the conversion logic in main()
-        page_url = page_input
-        if not page_url.startswith('http'):
-            page_url = f'https://www.facebook.com/{page_url}'
-        
-        self.assertEqual(page_url, "https://facebook.com/testpage")
+        result = self._convert_page_to_url("https://facebook.com/testpage")
+        self.assertEqual(result, "https://facebook.com/testpage")
     
     def test_page_url_conversion_with_http(self):
         """Test that HTTP URLs are recognized"""
-        page_input = "http://www.facebook.com/testpage"
-        # Simulate the conversion logic in main()
-        page_url = page_input
-        if not page_url.startswith('http'):
-            page_url = f'https://www.facebook.com/{page_url}'
-        
-        self.assertEqual(page_url, "http://www.facebook.com/testpage")
+        result = self._convert_page_to_url("http://www.facebook.com/testpage")
+        self.assertEqual(result, "http://www.facebook.com/testpage")
 
 
 class TestParser(unittest.TestCase):
