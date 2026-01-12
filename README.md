@@ -157,7 +157,8 @@ If the crawler is finding 0 posts, try these solutions:
    # Save HTML for debugging
    python -m src.crawler --page "URL" --debug-html
    
-   # The HTML will be saved to /tmp/facebook_crawler_debug/
+   # The HTML will be saved to your system's temp directory
+   # (e.g., /tmp/facebook_crawler_debug/ on Linux/Mac, C:\Users\<user>\AppData\Local\Temp\facebook_crawler_debug\ on Windows)
    # Check if it shows a login page
    ```
 

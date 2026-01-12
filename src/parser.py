@@ -2,12 +2,16 @@
 HTML Parser for Facebook posts using BeautifulSoup
 """
 import re
+import hashlib
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
+
+# Constants for post ID extraction
+ELEMENT_ID_PREFIXES = ['post', 'hyperfeed']
 
 
 class FacebookParser:
@@ -65,14 +69,13 @@ class FacebookParser:
             
             # Method 4: Use element ID if available
             element_id = post_element.get('id')
-            if element_id and (element_id.startswith('post') or element_id.startswith('hyperfeed')):
+            if element_id and any(element_id.startswith(prefix) for prefix in ELEMENT_ID_PREFIXES):
                 return element_id
             
             # Method 5: Generate ID from content hash (last resort)
             content = self.extract_content(post_element)
             timestamp = self.extract_timestamp(post_element)
             if content or timestamp:
-                import hashlib
                 # Create a deterministic ID from content and timestamp
                 id_string = f"{content[:100]}_{timestamp}"
                 hash_id = hashlib.md5(id_string.encode()).hexdigest()[:16]
@@ -302,11 +305,9 @@ class FacebookParser:
             # Modern Facebook selectors (2024+)
             {'role': 'article'},
             {'data-pagelet': lambda x: x and 'FeedUnit' in x},
-            {'class': lambda x: x and any(cls in str(x) for cls in ['x1yztbdb', 'x1n2onr6'])},
             # Older selectors as fallback
             {'data-testid': 'fbfeed_story'},
             {'class': '_5pcr userContentWrapper'},
-            {'class': lambda x: x and 'userContentWrapper' in str(x)},
         ]
         
         post_elements = []
@@ -327,14 +328,24 @@ class FacebookParser:
             # Look for divs with role=article anywhere
             post_elements = self.soup.find_all('div', {'role': 'article'})
             if not post_elements:
-                # Last resort: find divs that contain links to /posts/ or /permalink/
-                all_divs = self.soup.find_all('div')
-                for div in all_divs:
-                    links = div.find_all('a', href=True, recursive=False)
-                    for link in links:
-                        if any(pattern in link['href'] for pattern in ['/posts/', '/permalink/', 'story_fbid=']):
+                # Try finding by class patterns
+                for div in self.soup.find_all('div', class_=True):
+                    div_classes = div.get('class', [])
+                    if isinstance(div_classes, list):
+                        # Check if any known class patterns are present
+                        if any(cls in div_classes for cls in ['userContentWrapper', 'x1yztbdb', 'x1n2onr6']):
                             post_elements.append(div)
-                            break
+                            continue
+                
+                # Last resort: find divs that contain links to /posts/ or /permalink/
+                if not post_elements:
+                    all_divs = self.soup.find_all('div')
+                    for div in all_divs:
+                        links = div.find_all('a', href=True, recursive=False)
+                        for link in links:
+                            if any(pattern in link['href'] for pattern in ['/posts/', '/permalink/', 'story_fbid=']):
+                                post_elements.append(div)
+                                break
         
         logger.info(f"Found {len(post_elements)} potential post elements")
         

@@ -6,6 +6,7 @@ import json
 import time
 import random
 import logging
+import tempfile
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -218,7 +219,7 @@ class FacebookCrawler:
             
             # Save HTML for debugging if requested
             if save_html:
-                debug_dir = Path('/tmp/facebook_crawler_debug')
+                debug_dir = Path(tempfile.gettempdir()) / 'facebook_crawler_debug'
                 debug_dir.mkdir(exist_ok=True)
                 debug_file = debug_dir / f'{page_name}_{int(time.time())}.html'
                 with open(debug_file, 'w', encoding='utf-8') as f:
