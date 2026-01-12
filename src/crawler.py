@@ -186,7 +186,7 @@ class FacebookCrawler:
         
         logger.info("Scrolling completed")
     
-    def crawl_page(self, page_url: str, page_name: str = None, scrolls: int = 5) -> List[Dict[str, Any]]:
+    def crawl_page(self, page_url: str, page_name: str = None, scrolls: int = 5, save_html: bool = False) -> List[Dict[str, Any]]:
         """
         Crawl a Facebook page and extract posts
         
@@ -194,6 +194,7 @@ class FacebookCrawler:
             page_url: URL of the Facebook page
             page_name: Name identifier for the page
             scrolls: Number of times to scroll to load more posts
+            save_html: Whether to save HTML content for debugging
             
         Returns:
             List of parsed posts
@@ -214,6 +215,15 @@ class FacebookCrawler:
             
             # Get page HTML
             html_content = self.page.content()
+            
+            # Save HTML for debugging if requested
+            if save_html:
+                debug_dir = Path('/tmp/facebook_crawler_debug')
+                debug_dir.mkdir(exist_ok=True)
+                debug_file = debug_dir / f'{page_name}_{int(time.time())}.html'
+                with open(debug_file, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                logger.info(f"Saved HTML to {debug_file} for debugging")
             
             # Parse posts
             posts = self.parser.find_posts(html_content, page_name)
