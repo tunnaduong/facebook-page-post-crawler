@@ -6,6 +6,7 @@ import json
 import time
 import random
 import logging
+import tempfile
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -186,7 +187,7 @@ class FacebookCrawler:
         
         logger.info("Scrolling completed")
     
-    def crawl_page(self, page_url: str, page_name: str = None, scrolls: int = 5) -> List[Dict[str, Any]]:
+    def crawl_page(self, page_url: str, page_name: str = None, scrolls: int = 5, save_html: bool = False) -> List[Dict[str, Any]]:
         """
         Crawl a Facebook page and extract posts
         
@@ -194,6 +195,7 @@ class FacebookCrawler:
             page_url: URL of the Facebook page
             page_name: Name identifier for the page
             scrolls: Number of times to scroll to load more posts
+            save_html: Whether to save HTML content for debugging
             
         Returns:
             List of parsed posts
@@ -215,8 +217,32 @@ class FacebookCrawler:
             # Get page HTML
             html_content = self.page.content()
             
+            # Save HTML for debugging if requested
+            if save_html:
+                debug_dir = Path(tempfile.gettempdir()) / 'facebook_crawler_debug'
+                debug_dir.mkdir(exist_ok=True)
+                debug_file = debug_dir / f'{page_name}_{int(time.time())}.html'
+                with open(debug_file, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                logger.info(f"Saved HTML to {debug_file} for debugging")
+            
             # Parse posts
             posts = self.parser.find_posts(html_content, page_name)
+            
+            # If no posts found, provide helpful diagnostics
+            if len(posts) == 0:
+                logger.warning("No posts were found on this page.")
+                logger.warning("Possible reasons:")
+                logger.warning("  1. The page requires login to view posts")
+                logger.warning("  2. The page has no posts")
+                logger.warning("  3. Facebook's HTML structure has changed")
+                logger.warning("  4. You may be blocked or rate-limited")
+                logger.warning("")
+                logger.warning("Suggestions:")
+                logger.warning("  1. Try logging in with valid credentials")
+                logger.warning("  2. Save cookies from a logged-in session")
+                logger.warning("  3. Use --debug-html flag to save HTML for inspection")
+                logger.warning("  4. Check if the page URL is correct and publicly accessible")
             
             logger.info(f"Successfully crawled {len(posts)} posts from {page_name}")
             return posts
@@ -251,7 +277,7 @@ class FacebookCrawler:
         return stats
     
     def run(self, page_url: str, page_name: str = None, scrolls: int = 5, 
-            use_cookies: bool = True, save_to_db: bool = True) -> Dict[str, Any]:
+            use_cookies: bool = True, save_to_db: bool = True, save_html: bool = False) -> Dict[str, Any]:
         """
         Main crawl execution
         
@@ -261,6 +287,7 @@ class FacebookCrawler:
             scrolls: Number of scroll iterations
             use_cookies: Whether to load saved cookies
             save_to_db: Whether to save results to database
+            save_html: Whether to save HTML for debugging
             
         Returns:
             Dictionary with crawl results
@@ -288,9 +315,15 @@ class FacebookCrawler:
             self._random_delay(2, 4)
             
             # Check if we need to login
-            if 'login' in self.page.url.lower():
+            current_url = self.page.url.lower()
+            if 'login' in current_url or 'checkpoint' in current_url:
                 logger.warning("Not logged in. Attempting login...")
-                self.login()
+                login_success = self.login()
+                if not login_success:
+                    logger.error("Login failed. Proceeding without authentication.")
+                    logger.error("Note: Many pages require login to view posts.")
+            else:
+                logger.info("Already logged in or authentication not required")
             
             # Connect to database if saving
             if save_to_db:
@@ -300,7 +333,7 @@ class FacebookCrawler:
                 log_id = self.db.create_crawl_log(page_name)
             
             # Crawl the page
-            posts = self.crawl_page(page_url, page_name, scrolls)
+            posts = self.crawl_page(page_url, page_name, scrolls, save_html)
             results['posts_found'] = len(posts)
             
             # Print posts to console (Phase 2 requirement)
@@ -362,6 +395,7 @@ def main():
     parser.add_argument('--headless', action='store_true', help='Run browser in headless mode')
     parser.add_argument('--no-cookies', action='store_true', help='Do not use saved cookies')
     parser.add_argument('--no-save', action='store_true', help='Do not save to database')
+    parser.add_argument('--debug-html', action='store_true', help='Save HTML content to /tmp for debugging')
     
     args = parser.parse_args()
     
@@ -377,7 +411,8 @@ def main():
         page_name=args.name,
         scrolls=args.scrolls,
         use_cookies=not args.no_cookies,
-        save_to_db=not args.no_save
+        save_to_db=not args.no_save,
+        save_html=args.debug_html
     )
     
     # Print results

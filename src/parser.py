@@ -2,12 +2,16 @@
 HTML Parser for Facebook posts using BeautifulSoup
 """
 import re
+import hashlib
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
+
+# Constants for post ID extraction
+ELEMENT_ID_PREFIXES = ['post', 'hyperfeed']
 
 
 class FacebookParser:
@@ -43,6 +47,10 @@ class FacebookParser:
                     match = re.search(r'/posts/(\d+)', href)
                     if match:
                         return match.group(1)
+                elif '/videos/' in href:
+                    match = re.search(r'/videos/(\d+)', href)
+                    if match:
+                        return 'video_' + match.group(1)
             
             # Method 2: Check data attributes
             if post_element.get('data-ft'):
@@ -51,10 +59,28 @@ class FacebookParser:
                 if match:
                     return match.group(1)
             
-            # Method 3: Use element ID if available
+            # Method 3: Check for aria-label or other identifying attributes
+            aria_label = post_element.get('aria-label')
+            if aria_label:
+                # Try to extract timestamp or unique identifier from aria-label
+                match = re.search(r'(\d{10,})', aria_label)
+                if match:
+                    return match.group(1)
+            
+            # Method 4: Use element ID if available
             element_id = post_element.get('id')
-            if element_id and element_id.startswith('post'):
+            if element_id and any(element_id.startswith(prefix) for prefix in ELEMENT_ID_PREFIXES):
                 return element_id
+            
+            # Method 5: Generate ID from content hash (last resort)
+            content = self.extract_content(post_element)
+            timestamp = self.extract_timestamp(post_element)
+            if content or timestamp:
+                # Create a deterministic ID from content and timestamp
+                id_string = f"{content[:100]}_{timestamp}"
+                hash_id = hashlib.md5(id_string.encode()).hexdigest()[:16]
+                logger.debug(f"Generated fallback post ID: {hash_id}")
+                return f"generated_{hash_id}"
                 
         except Exception as e:
             logger.error(f"Error extracting post ID: {e}")
@@ -67,22 +93,45 @@ class FacebookParser:
             # Look for common Facebook post content selectors
             # These may vary based on Facebook's HTML structure
             content_selectors = [
+                # Modern selectors
+                {'data-ad-preview': 'message'},
+                {'data-ad-comet-preview': 'message'},
+                # Common selectors
                 {'data-testid': 'post_message'},
                 {'class': 'userContent'},
                 {'class': '_5pbx userContent'},
+                # Look for specific div patterns
+                {'class': lambda x: x and 'userContent' in str(x)},
             ]
             
             for selector in content_selectors:
                 content_elem = post_element.find('div', selector)
                 if content_elem:
-                    return content_elem.get_text(strip=True)
+                    text = content_elem.get_text(strip=True)
+                    if text and len(text) > 0:
+                        return text
             
-            # Fallback: get all text
-            return post_element.get_text(strip=True)[:500]  # Limit length
+            # Try to find span or p tags with substantial text
+            for tag in ['span', 'p', 'div']:
+                elements = post_element.find_all(tag)
+                for elem in elements:
+                    # Skip if it's likely a button or navigation element
+                    if elem.get('role') in ['button', 'link', 'navigation']:
+                        continue
+                    text = elem.get_text(strip=True)
+                    # Only consider if it has substantial content
+                    if text and len(text) > 20:
+                        return text
+            
+            # Fallback: get all text from the post element
+            full_text = post_element.get_text(strip=True)
+            if full_text and len(full_text) > 0:
+                return full_text[:500]  # Limit length to avoid junk
             
         except Exception as e:
             logger.error(f"Error extracting content: {e}")
-            return ""
+            
+        return ""
     
     def extract_media_urls(self, post_element) -> List[str]:
         """Extract image and video URLs from post"""
@@ -199,17 +248,29 @@ class FacebookParser:
             post_id = self.extract_post_id(post_element)
             
             if not post_id:
-                logger.warning("Could not extract post ID, skipping post")
+                logger.debug("Could not extract post ID, skipping post")
+                return None
+            
+            # Extract all available data
+            content = self.extract_content(post_element)
+            media_urls = self.extract_media_urls(post_element)
+            posted_at = self.extract_timestamp(post_element)
+            engagement = self.extract_engagement(post_element)
+            post_url = self.extract_post_url(post_element)
+            
+            # Only return post if we have at least some content or media
+            if not content and not media_urls:
+                logger.debug(f"Post {post_id} has no content or media, skipping")
                 return None
             
             post_data = {
                 'post_id': post_id,
                 'page_name': page_name,
-                'content': self.extract_content(post_element),
-                'media_urls': self.extract_media_urls(post_element),
-                'posted_at': self.extract_timestamp(post_element),
-                'engagement': self.extract_engagement(post_element),
-                'post_url': self.extract_post_url(post_element)
+                'content': content,
+                'media_urls': media_urls,
+                'posted_at': posted_at,
+                'engagement': engagement,
+                'post_url': post_url
             }
             
             logger.debug(f"Parsed post: {post_id}")
@@ -233,27 +294,91 @@ class FacebookParser:
         self.parse_html(html_content)
         posts = []
         
+        # Check if we're hitting a login wall
+        if self._check_login_required():
+            logger.warning("Facebook is requiring login to view this page. Posts may not be visible.")
+            logger.warning("Try logging in first or use cookies from an authenticated session.")
+        
         # Find all post elements
-        # Facebook structure varies, try multiple selectors
+        # Facebook structure varies, try multiple selectors in order of specificity
         post_selectors = [
+            # Modern Facebook selectors (2024+)
             {'role': 'article'},
+            {'data-pagelet': lambda x: x and 'FeedUnit' in x},
+            # Older selectors as fallback
             {'data-testid': 'fbfeed_story'},
             {'class': '_5pcr userContentWrapper'},
         ]
         
         post_elements = []
-        for selector in post_selectors:
-            elements = self.soup.find_all('div', selector)
-            if elements:
-                post_elements.extend(elements)
-                break
+        for i, selector in enumerate(post_selectors):
+            try:
+                elements = self.soup.find_all('div', selector)
+                if elements:
+                    logger.info(f"Found {len(elements)} elements with selector #{i+1}: {selector}")
+                    post_elements.extend(elements)
+                    break
+            except Exception as e:
+                logger.debug(f"Selector {selector} failed: {e}")
+                continue
+        
+        # If no elements found with specific selectors, try broader search
+        if not post_elements:
+            logger.warning("No elements found with specific selectors, trying broader search...")
+            # Look for divs with role=article anywhere
+            post_elements = self.soup.find_all('div', {'role': 'article'})
+            if not post_elements:
+                # Try finding by class patterns
+                for div in self.soup.find_all('div', class_=True):
+                    div_classes = div.get('class', [])
+                    if isinstance(div_classes, list):
+                        # Check if any known class patterns are present
+                        if any(cls in div_classes for cls in ['userContentWrapper', 'x1yztbdb', 'x1n2onr6']):
+                            post_elements.append(div)
+                            continue
+                
+                # Last resort: find divs that contain links to /posts/ or /permalink/
+                if not post_elements:
+                    all_divs = self.soup.find_all('div')
+                    for div in all_divs:
+                        links = div.find_all('a', href=True, recursive=False)
+                        for link in links:
+                            if any(pattern in link['href'] for pattern in ['/posts/', '/permalink/', 'story_fbid=']):
+                                post_elements.append(div)
+                                break
         
         logger.info(f"Found {len(post_elements)} potential post elements")
         
-        for post_elem in post_elements:
+        # Deduplicate elements (sometimes nested structures cause duplicates)
+        seen_ids = set()
+        unique_elements = []
+        for elem in post_elements:
+            elem_id = id(elem)
+            if elem_id not in seen_ids:
+                seen_ids.add(elem_id)
+                unique_elements.append(elem)
+        
+        logger.info(f"Processing {len(unique_elements)} unique post elements")
+        
+        for post_elem in unique_elements:
             post_data = self.parse_post(post_elem, page_name)
             if post_data:
                 posts.append(post_data)
         
         logger.info(f"Successfully parsed {len(posts)} posts")
         return posts
+    
+    def _check_login_required(self) -> bool:
+        """Check if Facebook is requiring login"""
+        if not self.soup:
+            return False
+        
+        # Check for common login-related elements
+        login_indicators = [
+            self.soup.find('form', {'id': 'login_form'}),
+            self.soup.find('input', {'name': 'email'}),
+            self.soup.find('input', {'name': 'pass'}),
+            self.soup.find(string=lambda text: text and 'log in' in text.lower()),
+        ]
+        
+        return any(login_indicators)
