@@ -66,7 +66,11 @@ mysql -u root -p < database/schema.sql
 
 Run a single crawl session:
 ```bash
-python src/crawler.py --page "page_name"
+# Using a page name (will be converted to https://www.facebook.com/page_name)
+python src/crawler.py --page "microsoft"
+
+# Using a full Facebook page URL
+python src/crawler.py --page "https://www.facebook.com/microsoft"
 ```
 
 ### Scheduled Crawling

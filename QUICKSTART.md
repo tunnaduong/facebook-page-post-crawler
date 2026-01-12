@@ -49,8 +49,11 @@ Activate the virtual environment and run a test crawl:
 ```bash
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Crawl a public Facebook page (no authentication needed for public pages)
+# Crawl using a full URL
 python src/crawler.py --page "https://www.facebook.com/microsoft" --scrolls 3
+
+# Or crawl using just the page name (will be converted to full URL)
+python src/crawler.py --page "microsoft" --scrolls 3
 ```
 
 This will:
@@ -106,14 +109,17 @@ http://localhost:8501
 ### Manual Crawling
 
 ```bash
-# Basic crawl
+# Basic crawl with page name
+python src/crawler.py --page "microsoft"
+
+# Basic crawl with full URL
 python src/crawler.py --page "https://www.facebook.com/microsoft"
 
 # Crawl with more scrolls (load more posts)
 python src/crawler.py --page "https://www.facebook.com/microsoft" --scrolls 10
 
 # Crawl without saving to database (testing)
-python src/crawler.py --page "https://www.facebook.com/microsoft" --no-save
+python src/crawler.py --page "microsoft" --no-save
 
 # Crawl in headless mode
 python src/crawler.py --page "https://www.facebook.com/microsoft" --headless

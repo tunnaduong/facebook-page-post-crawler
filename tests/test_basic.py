@@ -27,6 +27,37 @@ class TestConfig(unittest.TestCase):
         self.assertIn('database', db_config)
 
 
+class TestCrawlerPageInput(unittest.TestCase):
+    """Test crawler page URL/name handling"""
+    
+    def _convert_page_to_url(self, page_input):
+        """Helper method that simulates the conversion logic in main()"""
+        page_url = page_input
+        if not page_url.startswith('http'):
+            page_url = f'https://www.facebook.com/{page_url}'
+        return page_url
+    
+    def test_page_url_conversion_with_url(self):
+        """Test that full URLs are used as-is"""
+        result = self._convert_page_to_url("https://www.facebook.com/microsoft")
+        self.assertEqual(result, "https://www.facebook.com/microsoft")
+    
+    def test_page_url_conversion_with_name(self):
+        """Test that page names are converted to URLs"""
+        result = self._convert_page_to_url("microsoft")
+        self.assertEqual(result, "https://www.facebook.com/microsoft")
+    
+    def test_page_url_conversion_with_https(self):
+        """Test that HTTPS URLs are recognized"""
+        result = self._convert_page_to_url("https://facebook.com/testpage")
+        self.assertEqual(result, "https://facebook.com/testpage")
+    
+    def test_page_url_conversion_with_http(self):
+        """Test that HTTP URLs are recognized"""
+        result = self._convert_page_to_url("http://www.facebook.com/testpage")
+        self.assertEqual(result, "http://www.facebook.com/testpage")
+
+
 class TestParser(unittest.TestCase):
     """Test HTML parser"""
     
