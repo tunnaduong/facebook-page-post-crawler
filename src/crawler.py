@@ -355,9 +355,10 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Facebook Page Post Crawler')
-    parser.add_argument('--page', required=True, help='Facebook page URL or username')
-    parser.add_argument('--name', help='Page name identifier')
-    parser.add_argument('--scrolls', type=int, default=5, help='Number of scroll iterations')
+    parser.add_argument('--page', required=True, 
+                       help='Facebook page URL (e.g., https://www.facebook.com/microsoft) or page name (e.g., microsoft)')
+    parser.add_argument('--name', help='Page name identifier for database storage')
+    parser.add_argument('--scrolls', type=int, default=5, help='Number of scroll iterations (default: 5)')
     parser.add_argument('--headless', action='store_true', help='Run browser in headless mode')
     parser.add_argument('--no-cookies', action='store_true', help='Do not use saved cookies')
     parser.add_argument('--no-save', action='store_true', help='Do not save to database')
