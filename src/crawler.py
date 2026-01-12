@@ -261,7 +261,7 @@ class FacebookCrawler:
         return stats
     
     def run(self, page_url: str, page_name: str = None, scrolls: int = 5, 
-            use_cookies: bool = True, save_to_db: bool = True) -> Dict[str, Any]:
+            use_cookies: bool = True, save_to_db: bool = True, save_html: bool = False) -> Dict[str, Any]:
         """
         Main crawl execution
         
@@ -271,6 +271,7 @@ class FacebookCrawler:
             scrolls: Number of scroll iterations
             use_cookies: Whether to load saved cookies
             save_to_db: Whether to save results to database
+            save_html: Whether to save HTML for debugging
             
         Returns:
             Dictionary with crawl results
@@ -310,7 +311,7 @@ class FacebookCrawler:
                 log_id = self.db.create_crawl_log(page_name)
             
             # Crawl the page
-            posts = self.crawl_page(page_url, page_name, scrolls)
+            posts = self.crawl_page(page_url, page_name, scrolls, save_html)
             results['posts_found'] = len(posts)
             
             # Print posts to console (Phase 2 requirement)
@@ -372,6 +373,7 @@ def main():
     parser.add_argument('--headless', action='store_true', help='Run browser in headless mode')
     parser.add_argument('--no-cookies', action='store_true', help='Do not use saved cookies')
     parser.add_argument('--no-save', action='store_true', help='Do not save to database')
+    parser.add_argument('--debug-html', action='store_true', help='Save HTML content to /tmp for debugging')
     
     args = parser.parse_args()
     
@@ -387,7 +389,8 @@ def main():
         page_name=args.name,
         scrolls=args.scrolls,
         use_cookies=not args.no_cookies,
-        save_to_db=not args.no_save
+        save_to_db=not args.no_save,
+        save_html=args.debug_html
     )
     
     # Print results
