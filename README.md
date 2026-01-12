@@ -146,6 +146,55 @@ The `fb_posts` table stores:
 - `crawled_at`: When the post was crawled
 - `engagement`: JSON object with likes, comments, shares
 
+## Troubleshooting
+
+### No Posts Found (0 posts crawled)
+
+If the crawler is finding 0 posts, try these solutions:
+
+1. **Login Required**: Most Facebook pages require authentication to view posts
+   ```bash
+   # Save HTML for debugging
+   python -m src.crawler --page "URL" --debug-html
+   
+   # The HTML will be saved to /tmp/facebook_crawler_debug/
+   # Check if it shows a login page
+   ```
+
+2. **Use Authentication**:
+   - Set `FB_EMAIL` and `FB_PASSWORD` in your `.env` file
+   - Or manually login and save cookies:
+     ```bash
+     # Run without headless mode to login manually
+     python -m src.crawler --page "URL"
+     # Login in the browser window, then the cookies will be saved
+     ```
+
+3. **Profile vs Page URLs**:
+   - Use Facebook Page URLs (e.g., `https://www.facebook.com/pagename`)
+   - Profile URLs (`profile.php?id=...`) may require friendship/following and have different HTML structure
+
+4. **Check Facebook Blocks**:
+   - Facebook may block or limit automated access
+   - Try with a different IP address or use proxies
+   - Add delays between requests
+
+5. **HTML Structure Changes**:
+   - Facebook frequently updates their HTML
+   - Use `--debug-html` to inspect the actual HTML structure
+   - Update parser selectors if needed
+
+### Common Issues
+
+**"No cookie file found"**: This is normal on first run. The crawler will work without cookies but may have limited access.
+
+**Browser won't start**: Make sure Playwright browsers are installed:
+```bash
+playwright install chromium
+```
+
+**Database connection errors**: Verify MySQL is running and credentials in `.env` are correct.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
