@@ -1,6 +1,7 @@
 """
 Facebook Page Crawler using Playwright
 """
+
 import os
 import json
 import time
@@ -18,15 +19,14 @@ from src.parser import FacebookParser
 from src.database import Database
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 class FacebookCrawler:
     """Crawler for Facebook pages using Playwright"""
-    
+
     def __init__(self, headless: bool = None):
         self.headless = headless if headless is not None else Config.HEADLESS
         self.browser: Optional[Browser] = None
@@ -35,7 +35,7 @@ class FacebookCrawler:
         self.db = Database()
         self.cookies_path = Path(Config.COOKIES_DIR)
         self.cookies_path.mkdir(exist_ok=True)
-        
+
     def _random_delay(self, min_sec: int = None, max_sec: int = None):
         """Add a random delay to simulate human behavior"""
         min_sec = min_sec or Config.RANDOM_DELAY_MIN
@@ -43,256 +43,304 @@ class FacebookCrawler:
         delay = random.uniform(min_sec, max_sec)
         logger.debug(f"Sleeping for {delay:.2f} seconds")
         time.sleep(delay)
-    
-    def _get_cookie_file(self, identifier: str = 'default') -> Path:
+
+    def _get_cookie_file(self, identifier: str = "default") -> Path:
         """Get path to cookie file"""
-        return self.cookies_path / f'cookies_{identifier}.json'
-    
-    def save_cookies(self, identifier: str = 'default'):
+        return self.cookies_path / f"cookies_{identifier}.json"
+
+    def save_cookies(self, identifier: str = "default"):
         """Save browser cookies to file"""
         if not self.page:
             logger.warning("No page available to save cookies")
             return
-            
+
         cookies = self.page.context.cookies()
         cookie_file = self._get_cookie_file(identifier)
-        
-        with open(cookie_file, 'w') as f:
+
+        with open(cookie_file, "w") as f:
             json.dump(cookies, f, indent=2)
-        
+
         logger.info(f"Saved cookies to {cookie_file}")
-    
-    def load_cookies(self, identifier: str = 'default') -> bool:
+
+    def load_cookies(self, identifier: str = "default") -> bool:
         """Load cookies from file"""
         cookie_file = self._get_cookie_file(identifier)
-        
+
         # Fallback to cookies.json if default doesn't exist
-        if identifier == 'default' and not cookie_file.exists():
-            alternate_file = self.cookies_path / 'cookies.json'
+        if identifier == "default" and not cookie_file.exists():
+            alternate_file = self.cookies_path / "cookies.json"
             if alternate_file.exists():
                 cookie_file = alternate_file
-        
+
         if not cookie_file.exists():
             logger.info(f"No cookie file found at {cookie_file}")
             return False
-        
+
         try:
-            with open(cookie_file, 'r') as f:
+            with open(cookie_file, "r") as f:
                 cookies = json.load(f)
-            
+
             # Adapt cookies from Chrome extension format to Playwright format
             adapted_cookies = []
             for cookie in cookies:
                 adapted = {
-                    'name': cookie.get('name'),
-                    'value': cookie.get('value'),
-                    'domain': cookie.get('domain'),
-                    'path': cookie.get('path', '/'),
-                    'httpOnly': cookie.get('httpOnly', False),
-                    'secure': cookie.get('secure', False),
+                    "name": cookie.get("name"),
+                    "value": cookie.get("value"),
+                    "domain": cookie.get("domain"),
+                    "path": cookie.get("path", "/"),
+                    "httpOnly": cookie.get("httpOnly", False),
+                    "secure": cookie.get("secure", False),
                 }
-                
+
                 # Handle expirationDate -> expires
-                if 'expirationDate' in cookie:
-                    adapted['expires'] = cookie['expirationDate']
-                elif 'expires' in cookie:
-                    adapted['expires'] = cookie['expires']
-                
+                if "expirationDate" in cookie:
+                    adapted["expires"] = cookie["expirationDate"]
+                elif "expires" in cookie:
+                    adapted["expires"] = cookie["expires"]
+
                 # sameSite mapping
-                if 'sameSite' in cookie:
-                    ss = cookie['sameSite'].lower()
-                    if ss == 'no_restriction':
-                        adapted['sameSite'] = 'None'
-                    elif ss in ['strict', 'lax']:
-                        adapted['sameSite'] = ss.capitalize()
+                if "sameSite" in cookie:
+                    ss = cookie["sameSite"].lower()
+                    if ss == "no_restriction":
+                        adapted["sameSite"] = "None"
+                    elif ss in ["strict", "lax"]:
+                        adapted["sameSite"] = ss.capitalize()
                     else:
-                        adapted['sameSite'] = 'Lax' # Default
-                
+                        adapted["sameSite"] = "Lax"  # Default
+
                 adapted_cookies.append(adapted)
-            
+
             self.page.context.add_cookies(adapted_cookies)
             logger.info(f"Loaded {len(adapted_cookies)} cookies from {cookie_file}")
             return True
         except Exception as e:
             logger.error(f"Error loading cookies: {e}")
             return False
-    
+
     def start_browser(self):
         """Initialize Playwright browser"""
         logger.info("Starting browser...")
-        
+
         playwright = sync_playwright().start()
-        
+
         # Browser launch options
         launch_options = {
-            'headless': self.headless,
-            'channel': 'chrome',
-            'args': [
-                '--disable-blink-features=AutomationControlled',
-                '--no-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-            ]
+            "headless": self.headless,
+            "channel": "chrome",
+            "args": [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
         }
-        
+
         # Add proxy if configured
         if Config.USE_PROXY and Config.PROXY_URL:
-            launch_options['proxy'] = {'server': Config.PROXY_URL}
-        
+            launch_options["proxy"] = {"server": Config.PROXY_URL}
+
         self.browser = playwright.chromium.launch(**launch_options)
-        
+
         # Create context with realistic settings
         # User agent can be configured via environment variable
-        user_agent = os.getenv('USER_AGENT', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-        context = self.browser.new_context(
-            viewport={'width': 1920, 'height': 1080},
-            user_agent=user_agent
+        user_agent = os.getenv(
+            "USER_AGENT",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         )
-        
+        context = self.browser.new_context(
+            viewport={"width": 1920, "height": 1080}, user_agent=user_agent
+        )
+
         self.page = context.new_page()
-        
+
         # Apply stealth mode
         stealth_sync(self.page)
-        
+
         logger.info("Browser started successfully")
-    
+
     def stop_browser(self):
         """Close browser"""
         if self.browser:
             self.browser.close()
             logger.info("Browser closed")
-    
+
     def login(self, email: str = None, password: str = None) -> bool:
         """
         Login to Facebook (manual or automated)
-        
+
         Note: This is a basic implementation. For production,
         consider manual login with cookie saving.
         """
         email = email or Config.FB_EMAIL
         password = password or Config.FB_PASSWORD
-        
+
         if not email or not password:
             logger.warning("No credentials provided. Please login manually.")
             return False
-        
+
         try:
             logger.info("Attempting to login to Facebook...")
-            self.page.goto('https://www.facebook.com/login')
+            self.page.goto("https://www.facebook.com/login")
             self._random_delay(2, 4)
-            
+
             # Fill login form
             self.page.fill('input[name="email"]', email)
             self._random_delay(1, 2)
             self.page.fill('input[name="pass"]', password)
             self._random_delay(1, 2)
-            
+
             # Click login button
             self.page.click('button[name="login"]')
             self._random_delay(5, 8)
-            
+
             # Check if login was successful
-            if 'login' not in self.page.url.lower():
+            if "login" not in self.page.url.lower():
                 logger.info("Login successful")
                 self.save_cookies()
                 return True
             else:
                 logger.error("Login failed - still on login page")
                 return False
-                
+
         except Exception as e:
             logger.error(f"Error during login: {e}")
             return False
-    
+
     def scroll_page(self, scrolls: int = 5):
         """
         Scroll page to load more content
-        
+
         Args:
             scrolls: Number of times to scroll down
         """
         logger.info(f"Scrolling page {scrolls} times to load content...")
-        
+
         for i in range(scrolls):
             # Scroll to bottom
-            self.page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+            self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             self._random_delay(2, 4)
-            
+
+            # Try to click "Xem thêm" / "See more" buttons to expand post content
+            try:
+                # Target specifically the "See more" links in posts
+                # These are often <div> or <span> with role="button"
+                expand_selectors = [
+                    'div[role="button"]:has-text("Xem thêm")',
+                    'div[role="button"]:has-text("See more")',
+                    'span[role="button"]:has-text("Xem thêm")',
+                    'span[role="button"]:has-text("See more")',
+                    'div:has-text("Xem thêm")[class*="x1i10hfl"]',  # Common FB class for interactive elements
+                ]
+
+                for selector in expand_selectors:
+                    buttons = self.page.query_selector_all(selector)
+                    for btn in buttons:
+                        try:
+                            if btn.is_visible():
+                                text = btn.inner_text().lower()
+                                # Skip comment-related expansion
+                                if any(
+                                    x in text
+                                    for x in [
+                                        "bình luận",
+                                        "comment",
+                                        "phản hồi",
+                                        "reply",
+                                    ]
+                                ):
+                                    continue
+
+                                # Click and wait for expansion
+                                btn.click(timeout=2000, force=True)
+                                self._random_delay(1, 2)
+                        except Exception:
+                            continue
+            except Exception as e:
+                logger.debug(f"Error expanding content: {e}")
+
             # Scroll up a bit (natural behavior)
             if i % 3 == 0:
-                self.page.evaluate('window.scrollBy(0, -300)')
+                self.page.evaluate("window.scrollBy(0, -300)")
                 self._random_delay(1, 2)
-        
+
         logger.info("Scrolling completed")
-    
-    def crawl_page(self, page_url: str, page_name: str = None, scrolls: int = 5, save_html: bool = False) -> List[Dict[str, Any]]:
+
+    def crawl_page(
+        self,
+        page_url: str,
+        page_name: str = None,
+        scrolls: int = 5,
+        save_html: bool = False,
+    ) -> List[Dict[str, Any]]:
         """
         Crawl a Facebook page and extract posts
-        
+
         Args:
             page_url: URL of the Facebook page
             page_name: Name identifier for the page
             scrolls: Number of times to scroll to load more posts
             save_html: Whether to save HTML content for debugging
-            
+
         Returns:
             List of parsed posts
         """
         if not page_name:
             # Extract page name from URL
-            page_name = page_url.split('/')[-1] or page_url.split('/')[-2]
-        
+            page_name = page_url.split("/")[-1] or page_url.split("/")[-2]
+
         logger.info(f"Crawling page: {page_name} ({page_url})")
-        
+
         try:
             # Navigate to page
             logger.info(f"Navigating to {page_url}")
-            self.page.goto(page_url, wait_until='domcontentloaded', timeout=60000)
-            
+            self.page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
+
             # Wait for some content to load
             try:
-                self.page.wait_for_load_state('networkidle', timeout=20000)
+                self.page.wait_for_load_state("networkidle", timeout=20000)
             except Exception as e:
                 logger.warning(f"Network idle timeout: {e}. Proceeding anyway...")
-            
+
             self._random_delay(3, 5)
-            
+
             # Check for login redirect
-            if 'login' in self.page.url or 'checkpoint' in self.page.url:
+            if "login" in self.page.url or "checkpoint" in self.page.url:
                 logger.warning("Redirected to login/checkpoint page")
-            
+
             # Try to wait for key elements to ensure page is loaded
             try:
                 logger.info("Waiting for feed content...")
                 # Wait for either feed, main role, or common feed container classes
                 self.page.wait_for_selector(
-                    'div[role="feed"], div[role="main"], div[data-pagelet*="Feed"], div.x1yztbdb', 
-                    timeout=15000, 
-                    state='attached'
+                    'div[role="feed"], div[role="main"], div[data-pagelet*="Feed"], div.x1yztbdb',
+                    timeout=15000,
+                    state="attached",
                 )
                 logger.info("Feed content detected")
             except Exception as e:
-                logger.warning("Could not identify feed content. Page might be blocked, require login, or structure changed.")
+                logger.warning(
+                    "Could not identify feed content. Page might be blocked, require login, or structure changed."
+                )
                 logger.warning(f"Wait error: {e}")
-            
+
             # Scroll to load more posts
             self.scroll_page(scrolls)
-            
+
             # Get page HTML
             html_content = self.page.content()
-            
+
             # Save HTML for debugging if requested
             if save_html:
-                debug_dir = Path(tempfile.gettempdir()) / 'facebook_crawler_debug'
+                debug_dir = Path(tempfile.gettempdir()) / "facebook_crawler_debug"
                 debug_dir.mkdir(exist_ok=True)
-                debug_file = debug_dir / f'{page_name}_{int(time.time())}.html'
-                with open(debug_file, 'w', encoding='utf-8') as f:
+                debug_file = debug_dir / f"{page_name}_{int(time.time())}.html"
+                with open(debug_file, "w", encoding="utf-8") as f:
                     f.write(html_content)
                 logger.info(f"Saved HTML to {debug_file} for debugging")
-            
+
             # Parse posts
             posts = self.parser.find_posts(html_content, page_name)
-            
+
             # If no posts found, provide helpful diagnostics
             if len(posts) == 0:
                 logger.warning("No posts were found on this page.")
@@ -306,45 +354,56 @@ class FacebookCrawler:
                 logger.warning("  1. Try logging in with valid credentials")
                 logger.warning("  2. Save cookies from a logged-in session")
                 logger.warning("  3. Use --debug-html flag to save HTML for inspection")
-                logger.warning("  4. Check if the page URL is correct and publicly accessible")
-            
+                logger.warning(
+                    "  4. Check if the page URL is correct and publicly accessible"
+                )
+
             logger.info(f"Successfully crawled {len(posts)} posts from {page_name}")
             return posts
-            
+
         except Exception as e:
             logger.error(f"Error crawling page {page_name}: {e}")
             return []
-    
+
     def save_posts_to_db(self, posts: List[Dict[str, Any]]) -> Dict[str, int]:
         """
         Save posts to database
-        
+
         Returns:
             Dictionary with counts of new and updated posts
         """
-        stats = {'new': 0, 'updated': 0, 'failed': 0}
-        
+        stats = {"new": 0, "updated": 0, "failed": 0}
+
         if not self.db.connection or not self.db.connection.is_connected():
             self.db.connect()
-        
+
         for post in posts:
             success, is_new = self.db.save_post(post)
             if success:
                 if is_new:
-                    stats['new'] += 1
+                    stats["new"] += 1
                 else:
-                    stats['updated'] += 1
+                    stats["updated"] += 1
             else:
-                stats['failed'] += 1
-        
-        logger.info(f"Saved posts - New: {stats['new']}, Updated: {stats['updated']}, Failed: {stats['failed']}")
+                stats["failed"] += 1
+
+        logger.info(
+            f"Saved posts - New: {stats['new']}, Updated: {stats['updated']}, Failed: {stats['failed']}"
+        )
         return stats
-    
-    def run(self, page_url: str, page_name: str = None, scrolls: int = 5, 
-            use_cookies: bool = True, save_to_db: bool = True, save_html: bool = False) -> Dict[str, Any]:
+
+    def run(
+        self,
+        page_url: str,
+        page_name: str = None,
+        scrolls: int = 5,
+        use_cookies: bool = True,
+        save_to_db: bool = True,
+        save_html: bool = False,
+    ) -> Dict[str, Any]:
         """
         Main crawl execution
-        
+
         Args:
             page_url: URL of Facebook page to crawl
             page_name: Name identifier for the page
@@ -352,35 +411,35 @@ class FacebookCrawler:
             use_cookies: Whether to load saved cookies
             save_to_db: Whether to save results to database
             save_html: Whether to save HTML for debugging
-            
+
         Returns:
             Dictionary with crawl results
         """
         results = {
-            'success': False,
-            'posts_found': 0,
-            'posts_new': 0,
-            'posts_updated': 0,
-            'error': None
+            "success": False,
+            "posts_found": 0,
+            "posts_new": 0,
+            "posts_updated": 0,
+            "error": None,
         }
-        
+
         log_id = None
-        
+
         try:
             # Start browser
             self.start_browser()
-            
+
             # Load cookies or login
             if use_cookies:
                 self.load_cookies()
-            
+
             # Navigate to Facebook first to check if logged in
-            self.page.goto('https://www.facebook.com', timeout=60000)
+            self.page.goto("https://www.facebook.com", timeout=60000)
             self._random_delay(2, 4)
-            
+
             # Check if we need to login
             current_url = self.page.url.lower()
-            if 'login' in current_url or 'checkpoint' in current_url:
+            if "login" in current_url or "checkpoint" in current_url:
                 logger.warning("Not logged in. Attempting login...")
                 login_success = self.login()
                 if not login_success:
@@ -388,22 +447,22 @@ class FacebookCrawler:
                     logger.error("Note: Many pages require login to view posts.")
             else:
                 logger.info("Already logged in or authentication not required")
-            
+
             # Connect to database if saving
             if save_to_db:
                 self.db.connect()
                 if not page_name:
-                    page_name = page_url.split('/')[-1] or page_url.split('/')[-2]
+                    page_name = page_url.split("/")[-1] or page_url.split("/")[-2]
                 log_id = self.db.create_crawl_log(page_name)
-            
+
             # Crawl the page
             posts = self.crawl_page(page_url, page_name, scrolls, save_html)
-            results['posts_found'] = len(posts)
-            
+            results["posts_found"] = len(posts)
+
             # Print posts to console (Phase 2 requirement)
-            logger.info("\n" + "="*80)
+            logger.info("\n" + "=" * 80)
             logger.info(f"CRAWLED POSTS FROM {page_name}")
-            logger.info("="*80)
+            logger.info("=" * 80)
             for i, post in enumerate(posts, 1):
                 logger.info(f"\nPost {i}:")
                 logger.info(f"  ID: {post['post_id']}")
@@ -411,63 +470,82 @@ class FacebookCrawler:
                 logger.info(f"  Media: {len(post['media_urls'])} items")
                 logger.info(f"  Engagement: {post['engagement']}")
                 logger.info(f"  URL: {post['post_url']}")
-            logger.info("="*80 + "\n")
-            
+            logger.info("=" * 80 + "\n")
+
             # Save to database
             if save_to_db and posts:
                 stats = self.save_posts_to_db(posts)
-                results['posts_new'] = stats['new']
-                results['posts_updated'] = stats['updated']
-            
-            results['success'] = True
-            
+                results["posts_new"] = stats["new"]
+                results["posts_updated"] = stats["updated"]
+
+            results["success"] = True
+
             # Update crawl log
             if save_to_db and log_id:
                 self.db.update_crawl_log(
-                    log_id, 'completed',
-                    posts_found=results['posts_found'],
-                    posts_new=results['posts_new'],
-                    posts_updated=results['posts_updated']
+                    log_id,
+                    "completed",
+                    posts_found=results["posts_found"],
+                    posts_new=results["posts_new"],
+                    posts_updated=results["posts_updated"],
                 )
-            
+
         except Exception as e:
             logger.error(f"Error during crawl execution: {e}")
-            results['error'] = str(e)
-            
+            results["error"] = str(e)
+
             # Update crawl log with error
             if save_to_db and log_id:
-                self.db.update_crawl_log(log_id, 'failed', error_message=str(e))
-        
+                self.db.update_crawl_log(log_id, "failed", error_message=str(e))
+
         finally:
             # Cleanup
             self.stop_browser()
             if save_to_db:
                 self.db.disconnect()
-        
+
         return results
 
 
 def main():
     """CLI entry point"""
     import argparse
-    
-    parser = argparse.ArgumentParser(description='Facebook Page Post Crawler')
-    parser.add_argument('--page', required=True, 
-                       help='Facebook page URL (e.g., https://www.facebook.com/microsoft) or page name (e.g., microsoft)')
-    parser.add_argument('--name', help='Page name identifier for database storage')
-    parser.add_argument('--scrolls', type=int, default=5, help='Number of scroll iterations (default: 5)')
-    parser.add_argument('--headless', action='store_true', help='Run browser in headless mode')
-    parser.add_argument('--no-cookies', action='store_true', help='Do not use saved cookies')
-    parser.add_argument('--no-save', action='store_true', help='Do not save to database')
-    parser.add_argument('--debug-html', action='store_true', help='Save HTML content to /tmp for debugging')
-    
+
+    parser = argparse.ArgumentParser(description="Facebook Page Post Crawler")
+    parser.add_argument(
+        "--page",
+        required=True,
+        help="Facebook page URL (e.g., https://www.facebook.com/microsoft) or page name (e.g., microsoft)",
+    )
+    parser.add_argument("--name", help="Page name identifier for database storage")
+    parser.add_argument(
+        "--scrolls",
+        type=int,
+        default=5,
+        help="Number of scroll iterations (default: 5)",
+    )
+    parser.add_argument(
+        "--headless", action="store_true", help="Run browser in headless mode"
+    )
+    parser.add_argument(
+        "--no-cookies", action="store_true", help="Do not use saved cookies"
+    )
+    parser.add_argument(
+        "--no-save", action="store_true", help="Do not save to database"
+    )
+    parser.add_argument(
+        "--debug-html",
+        action="store_true",
+        help="Save HTML content to /tmp for debugging",
+    )
+
     args = parser.parse_args()
-    
+
     # Convert page name to URL if needed
     page_url = args.page
-    if not page_url.startswith('http'):
-        page_url = f'https://www.facebook.com/{page_url}'
-    
+    if not page_url.startswith("http"):
+        page_url = f"https://www.facebook.com/{page_url}"
+
     # Run crawler
     crawler = FacebookCrawler(headless=args.headless)
     results = crawler.run(
@@ -476,21 +554,21 @@ def main():
         scrolls=args.scrolls,
         use_cookies=not args.no_cookies,
         save_to_db=not args.no_save,
-        save_html=args.debug_html
+        save_html=args.debug_html,
     )
-    
+
     # Print results
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("CRAWL RESULTS")
-    print("="*80)
+    print("=" * 80)
     print(f"Success: {results['success']}")
     print(f"Posts found: {results['posts_found']}")
     print(f"Posts new: {results['posts_new']}")
     print(f"Posts updated: {results['posts_updated']}")
-    if results['error']:
+    if results["error"]:
         print(f"Error: {results['error']}")
-    print("="*80)
+    print("=" * 80)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
