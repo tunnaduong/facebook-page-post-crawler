@@ -126,10 +126,12 @@ class FacebookCrawler:
         # Browser launch options
         launch_options = {
             'headless': self.headless,
+            'channel': 'chrome',
             'args': [
                 '--disable-blink-features=AutomationControlled',
                 '--no-sandbox',
                 '--disable-dev-shm-usage',
+                '--disable-gpu',
             ]
         }
         
